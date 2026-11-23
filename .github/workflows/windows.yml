@@ -30,7 +30,7 @@ jobs:
           python -m pip install -r tests/requirements.txt
           python tests/test_reader.py --exe build/plugin/Release/cndb_check.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tests/test_installer.py --package dist/vmd-cndb-0.2.0-windows-x64
+          python tests/test_installer.py --package dist/vmd-cndb-0.2.1-windows-x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:

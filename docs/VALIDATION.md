@@ -1,12 +1,12 @@
 # Validation
 
-Updated 2026-11-23 (America/Chicago), v0.2.0.
+Updated 2026-11-23 (America/Chicago), v0.2.1.
 
 The length contract is native throughout: source coordinates, periodic boxes,
 default radius (0.5), and type radii share the trajectory unit. Header unit labels
 do not trigger conversion. Missing labels remain unspecified.
 
-23 reader tests and 5 installer tests pass locally. The reader suite compares
+23 reader tests and 7 installer tests pass locally. The reader suite compares
 all supported layouts, numeric frame order, float32/float64, compression and
 checksums, exact integer labels/genomic intervals, topology and periodic cells
 to h5py/NumPy. Unit labels nm, angstrom, reduced, custom and absent must all
@@ -23,7 +23,7 @@ fail before creating a molecule. This test failed on v0.1 with the exact message
 Run the actual VMD regression (licensed local VMD is required):
 
 ```powershell
-python tests/test_vmd_lengths.py --vmd 'C:/Program Files/University of Illinois/VMD2/vmd.exe' --package dist/vmd-cndb-0.2.0-windows-x64 --log build/vmd-lengths.log
+python tests/test_vmd_lengths.py --vmd 'C:/Program Files/University of Illinois/VMD2/vmd.exe' --package dist/vmd-cndb-0.2.1-windows-x64 --log build/vmd-lengths.log
 ```
 
 The graphical smoke test also loads through the GUI, sets a global radius, and
@@ -41,3 +41,10 @@ loading and label overrides do not modify source files.
 Windows CI builds the package and runs the reader/installer suites. VMD is not
 redistributed and its integration tests run locally. GPU rendering and remote
 CNDB streaming are outside these checks.
+
+Standard installation verification (v0.2.1): the stock VMD executable discovers
+the native reader in WIN64/molfile and loads the Tcl GUI through pkgIndex and
+scripts/init.d, with no -startup override. This passed first in a byte-identical
+isolated copy and then in the real Program Files installation after administrator
+approval. SHA256 checks verify that vmd.exe and the installed default vmd.rc were
+unchanged. Original-executable GUI/startup and native-length regressions pass.

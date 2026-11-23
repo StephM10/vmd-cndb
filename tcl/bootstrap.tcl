@@ -1,10 +1,5 @@
-# MIT, Copyright (c) 2026 Leren Wang. Safe to source repeatedly.
-if {![namespace exists ::vmdcndb] || ![info exists ::vmdcndb::ready]} {
-    set cndb_root [file dirname [file dirname [file normalize [info script]]]]
-    load [file join $cndb_root bin vmdcndb.dll] Vmdcndb
-    plugin dlopen [file join $cndb_root bin vmdcndb.dll]
-    plugin update
-    source -encoding utf-8 [file join $cndb_root tcl cndb.tcl]
-    set ::vmdcndb::ready 1
-    unset cndb_root
-}
+# Manual loading of the extracted ZIP; installed VMD uses init.d + pkgIndex.
+set vmdcndb_bootstrap_dir [file dirname [file normalize [info script]]]
+if {$vmdcndb_bootstrap_dir ni $::auto_path} {lappend ::auto_path $vmdcndb_bootstrap_dir}
+source -encoding utf-8 [file join $vmdcndb_bootstrap_dir register.tcl]
+unset vmdcndb_bootstrap_dir

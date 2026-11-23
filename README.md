@@ -3,32 +3,23 @@
 Open CNDB simulation trajectories directly in **Windows VMD**. No XTC conversion,
 Python environment, or Conda installation is needed to use the prebuilt plugin.
 
-**Early release: v0.2.0.** Native C++/HDF5 reader, Tcl 8.6 extension, and an
+**Early release: v0.2.1.** Native C++/HDF5 reader, Tcl 8.6 extension, and an
 **Plugins → CNDB Loader** window. Tested with the installed VMD 2.0 Windows
 alpha (banner 2.0.0a7; internal version 2.0.0a6), molfile ABI 18, x64.
 
 ## Install
 
-1. Install a licensed Windows x64 VMD with Tcl 8.6.
-2. Download and extract the [Windows ZIP](https://github.com/StephM10/vmd-cndb/releases/latest).
-3. Close VMD. Open PowerShell in the extracted directory and run:
+1. Download and extract the [Windows ZIP](https://github.com/StephM10/vmd-cndb/releases/latest).
+2. Close VMD and run the extracted `install.ps1` in an administrator PowerShell
+   if VMD is under Program Files. Supply `-VmdDir` for a different location.
+3. Open the **original VMD** normally and choose **Plugins → CNDB Loader**.
+4. Load the included `examples/demo.cndb` to try the plugin.
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\install.ps1
-   ```
-
-   The default VMD path is `C:\Program Files\University of Illinois\VMD2`.
-   Supply `-VmdDir 'D:\path\to\VMD'` if needed. The default installation uses
-   your personal startup file and requires no administrator rights.
-4. Open **VMD CNDB Loader** from Windows Start and choose **Plugins → CNDB Loader**.
-5. Browse to `examples/demo.cndb`, click **Inspect**, then **Load as new molecule**.
-
-The installer copies the package to `%LOCALAPPDATA%\VMD-CNDB\0.2.0`. It appends a
-marked bootstrap block to your personal `vmd.rc`, preserving its commands and
-timestamped backups. A new personal file sources the installed defaults. If you launch
-VMD from a directory containing another `vmd.rc`, run the installer with
-`-StartupFile 'C:\that\directory\vmd.rc'` as well. See [installation](docs/INSTALL.md)
-for manual loading, removal, and configuration details.
+Installation follows VMD's standard directories: the native reader goes to
+`plugins/WIN64/molfile/vmdcndb.so`, the Tcl package to
+`plugins/noarch/tcl/vmdcndb0.2.1`, and a registration script to `scripts/init.d`.
+The original executable and startup scripts are preserved. A custom launcher
+or `-startup` argument is unnecessary. [Installation and migration](docs/INSTALL.md).
 
 ## Supported files
 
@@ -109,7 +100,7 @@ connection for pinned source archives:
 .\scripts\build.ps1 -Package
 python -m pip install -r tests/requirements.txt
 python tests/test_reader.py --exe build/plugin/Release/cndb_check.exe
-python tests/test_installer.py --package dist/vmd-cndb-0.2.0-windows-x64
+python tests/test_installer.py --package dist/vmd-cndb-0.2.1-windows-x64
 ```
 
 HDF5 1.14.6, zlib 1.3.1, the Microsoft C/C++ runtime, and the Tcl stub library are
@@ -120,12 +111,11 @@ runs the reader and installer tests without redistributing VMD.
 For a real VMD integration test:
 
 ```powershell
-python tests/run_vmd.py --vmd 'C:/Program Files/University of Illinois/VMD2/vmd.exe' --package dist/vmd-cndb-0.2.0-windows-x64 --log build/vmd-test.log
+python tests/run_vmd.py --vmd 'C:/Program Files/University of Illinois/VMD2/vmd.exe' --package dist/vmd-cndb-0.2.1-windows-x64 --log build/vmd-test.log
 ```
 
 Add `--gui` to exercise the Tk window. After installation, add `--normal-startup`
-and `--startup-file 'C:/Users/your-name/vmd.rc'` to test the installed launcher's
-automatic initialization. [Validation record](docs/VALIDATION.md).
+to test automatic discovery by the original VMD installation. [Validation record](docs/VALIDATION.md).
 
 ## Origin and license
 

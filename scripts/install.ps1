@@ -1,94 +1,65 @@
 param(
     [string]$VmdDir = 'C:\Program Files\University of Illinois\VMD2',
-    [string]$Destination = '',
-    [string[]]$StartupFile = @()
+    [string]$LegacyStartupFile = (Join-Path $env:USERPROFILE 'vmd.rc')
 )
 $ErrorActionPreference = 'Stop'
+$version = '0.2.1'
 $package = $PSScriptRoot
+$VmdDir = [IO.Path]::GetFullPath($VmdDir)
 if (!(Test-Path -LiteralPath (Join-Path $package 'bin/vmdcndb.dll'))) { throw 'Run install.ps1 from the extracted Windows ZIP.' }
 if (!(Test-Path -LiteralPath (Join-Path $VmdDir 'vmd.exe'))) { throw "VMD not found: $VmdDir" }
-if (!$Destination) { $Destination = Join-Path $env:LOCALAPPDATA 'VMD-CNDB/0.2.0' }
-$Destination = [IO.Path]::GetFullPath($Destination)
-if ($Destination -eq [IO.Path]::GetFullPath($package)) { throw 'Choose an installation directory separate from the extracted ZIP.' }
-$manifestPath = Join-Path $Destination 'install-state.json'
-if ((Test-Path -LiteralPath $Destination) -and !(Test-Path -LiteralPath $manifestPath)) {
-    if ((Get-ChildItem -LiteralPath $Destination -Force | Measure-Object).Count) { throw 'Destination is nonempty and is not managed by this installer.' }
+$native = Join-Path $VmdDir 'plugins/WIN64/molfile/vmdcndb.so'
+$destination = Join-Path $VmdDir "plugins/noarch/tcl/vmdcndb$version"
+$registration = Join-Path $VmdDir 'scripts/init.d/vmdcndb.tcl'
+$manifest = Join-Path $destination 'install-state.json'
+foreach ($path in @($native,$registration)) {
+    if ((Test-Path -LiteralPath $path) -and !(Test-Path -LiteralPath $manifest)) { throw "Existing plugin has no ownership manifest: $path" }
 }
-$personalStartup = !$StartupFile.Count
-if ($personalStartup) {
-    $personalDirectory = $env:HOME
-    if (!$personalDirectory) { $personalDirectory = $env:USERPROFILE }
-    if (!$personalDirectory) { throw 'HOME/USERPROFILE is unavailable; supply -StartupFile.' }
-    $personalFile = Join-Path $personalDirectory 'vmd.rc'
-    if (!(Test-Path -LiteralPath $personalFile)) {
-        $defaultFile = Join-Path $VmdDir 'vmd.rc'
-        if (!(Test-Path -LiteralPath $defaultFile)) { throw 'VMD default vmd.rc is missing; supply an existing -StartupFile.' }
-        $defaultHex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($defaultFile.Replace('\','/')))).Replace('-','')
-        # Keep VMD's defaults live without copying or modifying Program Files.
-        [IO.File]::WriteAllText($personalFile, "# Personal VMD startup: retain installed defaults.`nsource [encoding convertfrom utf-8 [binary decode hex $defaultHex]]`n",[Text.UTF8Encoding]::new($false))
-    }
-    $StartupFile = @($personalFile)
+if ((Test-Path -LiteralPath $destination) -and !(Test-Path -LiteralPath $manifest)) {
+    if ((Get-ChildItem -LiteralPath $destination -Force | Measure-Object).Count) { throw "Unmanaged package directory: $destination" }
 }
-$StartupFile = @($StartupFile | ForEach-Object { [IO.Path]::GetFullPath($_) } | Select-Object -Unique)
-$plans = @()
-foreach ($path in $StartupFile) {
-    if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Startup file not found: $path. Supply an existing effective vmd.rc with -StartupFile." }
-    $stream = [IO.StreamReader]::new($path, $true)
-    try { $text = $stream.ReadToEnd(); $encoding = $stream.CurrentEncoding } finally { $stream.Dispose() }
-    $open = ([regex]::Matches($text,'(?m)^# >>> vmd-cndb managed >>>\r?$')).Count
-    $close = ([regex]::Matches($text,'(?m)^# <<< vmd-cndb managed <<<\r?$')).Count
-    if ($open -ne $close -or $open -gt 1) { throw "Malformed managed block in $path; restore its backup before installing." }
-    $access = [IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
-    $access.Dispose()
-    $plans += [pscustomobject]@{path=$path;text=$text;encoding=$encoding}
+if (Test-Path -LiteralPath $manifest) {
+    $old = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    if ($old.project -ne 'vmd-cndb' -or $old.vmd_directory -ne $VmdDir) { throw 'Unexpected ownership manifest.' }
 }
-New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-foreach ($name in @('bin','tcl','examples','docs','licenses','README.md','LICENSE','CHANGELOG.md','install.ps1','uninstall.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $package $name) -Destination $Destination -Recurse -Force
-}
-$hex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes((Join-Path $Destination 'tcl/bootstrap.tcl').Replace('\','/')))).Replace('-','').ToLowerInvariant()
-$block = @(
-    '# >>> vmd-cndb managed >>>',
-    "set cndb_bootstrap [encoding convertfrom utf-8 [binary decode hex $hex]]",
-    'if {[file exists $cndb_bootstrap]} {',
-    '    if {[catch {source $cndb_bootstrap} cndb_error]} {puts stderr "CNDB Loader: $cndb_error"}',
-    '}',
-    'unset cndb_bootstrap',
-    '# <<< vmd-cndb managed <<<'
-) -join "`n"
+$probe = Join-Path $VmdDir ('.vmd-cndb-write-' + [Guid]::NewGuid().ToString('N'))
+try {
+    $stream = [IO.File]::Open($probe,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    $stream.Dispose()
+    Remove-Item -LiteralPath $probe
+} catch { throw "VMD directory requires write access. Run this installer in an administrator PowerShell. No plugin files changed. $($_.Exception.Message)" }
+$legacy = $null
 $pattern = '(?ms)^# >>> vmd-cndb managed >>>\r?\n.*?^# <<< vmd-cndb managed <<<\r?\n?'
-$state = @()
-if (Test-Path -LiteralPath $manifestPath) {
-    $old = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($old.project -ne 'vmd-cndb') { throw 'Unexpected install manifest.' }
-    $state = @($old.startup)
+if ($LegacyStartupFile -and (Test-Path -LiteralPath $LegacyStartupFile)) {
+    $stream = [IO.StreamReader]::new($LegacyStartupFile,$true)
+    try { $text=$stream.ReadToEnd();$encoding=$stream.CurrentEncoding } finally { $stream.Dispose() }
+    $open=([regex]::Matches($text,'(?m)^# >>> vmd-cndb managed >>>\r?$')).Count
+    $close=([regex]::Matches($text,'(?m)^# <<< vmd-cndb managed <<<\r?$')).Count
+    if ($open -ne $close -or $open -gt 1) { throw 'Malformed legacy startup block; restore its backup first.' }
+    if ($open) { $legacy = @{path=$LegacyStartupFile; text=$text; encoding=$encoding} }
 }
-foreach ($plan in $plans) {
-    $path=$plan.path; $text=$plan.text; $encoding=$plan.encoding
-    $backup = "$path.cndb-backup-$(Get-Date -Format yyyyMMdd-HHmmss-fff)"
-    Copy-Item -LiteralPath $path -Destination $backup
-    if ($text -match $pattern) {
-        $updated = [regex]::Replace($text,$pattern,[System.Text.RegularExpressions.MatchEvaluator]{param($m) $block + "`n"})
-    } else {
-        $updated = $text + "`n" + $block + "`n"
-    }
-    [IO.File]::WriteAllText($path,$updated,$encoding)
-    $state += [pscustomobject]@{path=$path; backup=$backup}
-    [pscustomobject]@{project='vmd-cndb';version='0.2.0';destination=$Destination;startup=$state} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+New-Item -ItemType Directory -Force -Path $destination,(Split-Path $native -Parent),(Split-Path $registration -Parent) | Out-Null
+$state = @{project='vmd-cndb';version=$version;vmd_directory=$VmdDir;package_directory=$destination;native=$native;registration=$registration}
+$state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding utf8
+foreach ($name in @('cndb.tcl','package.tcl','pkgIndex.tcl')) {
+    Copy-Item -LiteralPath (Join-Path $package "tcl/$name") -Destination $destination -Force
 }
-if ($personalStartup -and $env:APPDATA) {
-    $menu = Join-Path $env:APPDATA 'Microsoft/Windows/Start Menu/Programs'
-    New-Item -ItemType Directory -Force -Path $menu | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcutPath = Join-Path $menu 'VMD CNDB Loader.lnk'
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = Join-Path $VmdDir 'vmd.exe'
-    $shortcut.Arguments = '-startup "' + $personalFile + '"'
-    $shortcut.WorkingDirectory = $personalDirectory
-    $shortcut.Description = 'VMD with the native CNDB Loader'
-    $shortcut.Save()
-    Write-Output "Start menu shortcut: $shortcutPath"
+foreach ($name in @('examples','docs','licenses','README.md','LICENSE','CHANGELOG.md','uninstall.ps1')) {
+    Copy-Item -LiteralPath (Join-Path $package $name) -Destination $destination -Recurse -Force
 }
-Write-Output "Installed CNDB Loader: $Destination"
-Write-Output 'Open VMD CNDB Loader from Start, then choose Plugins > CNDB Loader. Configurations have timestamped backups.'
-Write-Output "To remove startup integration: & '$Destination\uninstall.ps1'"
+Copy-Item -LiteralPath (Join-Path $package 'bin/vmdcndb.dll') -Destination $native -Force
+# Register last so VMD never discovers a partly copied package.
+Copy-Item -LiteralPath (Join-Path $package 'tcl/register.tcl') -Destination $registration -Force
+$state.native_sha256 = (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash
+$state.registration_sha256 = (Get-FileHash -LiteralPath $registration -Algorithm SHA256).Hash
+if ($legacy) {
+    $backup = "$($legacy.path).cndb-migration-$(Get-Date -Format yyyyMMdd-HHmmss-fff)"
+    Copy-Item -LiteralPath $legacy.path -Destination $backup
+    [IO.File]::WriteAllText($legacy.path,[regex]::Replace($legacy.text,$pattern,''),$legacy.encoding)
+    $state.legacy_backup = $backup
+}
+$state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding utf8
+Write-Output "Installed package: $destination"
+Write-Output "Installed native reader: $native"
+Write-Output "VMD extension registration: $registration"
+Write-Output 'Start the original VMD executable normally; choose Plugins > CNDB Loader. No custom launcher or -startup option is required.'

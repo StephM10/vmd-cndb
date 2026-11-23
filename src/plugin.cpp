@@ -184,5 +184,5 @@ extern "C" __declspec(dllexport) int Vmdcndb_Init(Tcl_Interp* ip) {
   Tcl_CreateObjCommand(ip,"::vmdcndb::_prepare",prepare_cmd,nullptr,nullptr);
   Tcl_CreateObjCommand(ip,"::vmdcndb::_finish",finish_cmd,nullptr,nullptr);
   Tcl_CreateObjCommand(ip,"::vmdcndb::_validate_radius",radius_cmd,nullptr,nullptr);
-  return Tcl_PkgProvide(ip,"vmdcndb_native","0.2.0");
+  return Tcl_PkgProvide(ip,"vmdcndb_native","0.2.1");
 }

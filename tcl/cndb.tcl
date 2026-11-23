@@ -219,5 +219,4 @@ proc ::vmdcndb::gui {} {
     grid columnconfigure .vmdcndb 1 -weight 1
     return .vmdcndb
 }
-package provide vmdcndb 0.2.0
-vmd_install_extension vmdcndb ::vmdcndb::gui {CNDB Loader}
+package provide vmdcndb 0.2.1

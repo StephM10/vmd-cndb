@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-11-23
+
+- Install in VMD standard native/Tcl plugin directories and its init.d hook.
+- Use pkgIndex/package require and preserve the original executable/startup files.
+- Remove the requirement for a custom startup-file shortcut.
+- Back up and migrate the old managed personal startup block.
+- Verify ordinary startup in an isolated copy of the stock VMD installation.
+
 ## 0.2.0 — 2026-11-23
 
 - Fix the length-convention bug: preserve native coordinate and box lengths.

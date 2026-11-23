@@ -1,46 +1,76 @@
-# Windows installation
+# Standard Windows VMD plugin installation
 
-The ZIP is self-contained apart from VMD's Tcl 8.6 runtime and Windows system
-libraries. The native plugin has no Python, Conda, HDF5 DLL, or VC runtime DLL
-dependency. It targets molfile ABI 18 and x64; other VMD builds require testing.
+The installer uses VMD's own plugin search and registration mechanisms:
 
-Close VMD and run the extracted `install.ps1`. `-VmdDir` selects the VMD
-installation. `-Destination` changes the private plugin directory. It must be
-empty or already managed by this installer; keep it separate from the ZIP.
+| Component | Path relative to the original VMD directory |
+| --- | --- |
+| Native molfile reader | `plugins/WIN64/molfile/vmdcndb.so` |
+| Tcl package | `plugins/noarch/tcl/vmdcndb0.2.1/` |
+| GUI registration hook | `scripts/init.d/vmdcndb.tcl` |
 
-The default installation uses `HOME` (or `USERPROFILE`) `vmd.rc` and creates a
-**VMD CNDB Loader** Start menu shortcut that selects it explicitly. No system
-directory changes or administrator rights are needed. A new personal file
-sources VMD's installed defaults; an existing personal file keeps its contents.
-It receives an ASCII, marked bootstrap block; existing
-commands are retained, and original bytes are backed up beside the file. The
-bootstrap sources an absolute UTF-8 path encoded as hex to avoid Tcl quoting or
-Windows encoding problems. Repeated installation replaces that block once.
+The `.so` file is a Windows x64 PE DLL, matching the naming convention of VMD's
+other WIN64 molfile plugins. The package uses `pkgIndex.tcl`, `package require`,
+and `vmd_install_extension`. VMD's shipped `loadplugins.tcl` scans the native
+reader directory and sources `scripts/init.d` registrations for graphical mode.
+The installer does not replace `vmd.exe`, `vmd.rc`, or VMD's built-in scripts.
+No custom executable, launcher, or `-startup` argument is required.
 
-VMD can use a `vmd.rc` in its launch directory instead of personal defaults. Supply
-an existing effective file with `-StartupFile 'C:\path\vmd.rc'` to target it
-explicitly. This also supports user-only configuration when an existing personal
-startup file takes precedence. The install-state manifest records touched files
-and backups. Re-running for another startup file retains earlier records.
+## Install
 
-To explicitly update a system `vmd.rc` under Program Files, use an administrator
-PowerShell window and `-StartupFile`. Do not replace an existing
-startup file with a blank one; that can suppress normal VMD defaults.
+Close VMD. Extract the Windows ZIP and run `install.ps1` in an administrator
+PowerShell when VMD is installed under Program Files:
 
-To load manually for the current session, use VMD's Tk Console:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Use `-VmdDir 'D:/path/to/VMD'` if needed. The default is
+`C:/Program Files/University of Illinois/VMD2`. The installer checks write access
+before copying plugin files. Existing unmanaged plugin files are preserved.
+
+Open the original VMD normally, then choose **Plugins → CNDB Loader**. In text
+mode the reader is discovered automatically; use `package require vmdcndb` to
+load its Tcl inspect/load/info commands explicitly.
+
+The plugin is self-contained apart from Windows and VMD's Tcl 8.6 runtime.
+It targets x64 molfile ABI 18. VMD itself is not included.
+
+## Migration from v0.2.0 and earlier
+
+Earlier installers stored files under `%LOCALAPPDATA%/VMD-CNDB` and used a marked
+block in a personal `vmd.rc`. They also created a shortcut that selected that file
+with `-startup`; it targeted the original VMD executable.
+
+The standard installer backs up and removes that marked block so it cannot load
+an older package before the standard package is discovered. Other personal
+commands, including a command sourcing installed defaults, are retained. Supply
+`-LegacyStartupFile 'C:/Users/your-name/vmd.rc'` when installing on behalf of a
+different user. Old AppData files and the earlier shortcut are left available;
+the original VMD entry point now works independently of them.
+
+## Manual session loading and removal
+
+For a temporary session without installing, source the extracted ZIP's
+`tcl/bootstrap.tcl` from VMD. It uses the same Tcl package, then registers the menu:
 
 ```tcl
 source {C:/path/to/extracted-package/tcl/bootstrap.tcl}
 ```
 
-To remove integration, run the installed `uninstall.ps1`. It removes only the
-marked blocks and preserves subsequent user edits, installed files, and backups.
-Restart VMD. Restore an original backup manually only if you want to discard all
-later changes to that configuration. The Start menu shortcut is retained as a
-normal VMD launcher after removal; the personal file still sources VMD defaults.
+To remove automatic discovery, run the installed package's `uninstall.ps1` with
+administrator rights if required. It validates the ownership manifest and checks
+file hashes before removing its native reader, registration hook, and package
+index. It preserves modified files, documentation, examples and migration records.
+Restart VMD after installation or removal. Check `package present vmdcndb` after
+opening the loader; it should return `0.2.1`.
 
-If the extension fails to appear, inspect VMD's text console for `CNDB Loader:`.
-Check that it is a Windows x64 Tcl 8.6 build and that VMD used the expected
-startup file. `package present vmdcndb` should return `0.2.0`; `vmdcndb::inspect`
-should list the example trajectory. A fresh VMD process is required after
-replacing the loaded DLL.
+## Evidence
+
+The [official Tcl plugin guide](https://www.ks.uiuc.edu/Research/vmd/plugins/doxygen/tcltkplugins.html)
+documents package indexes/search directories, `package require`, and menu
+registration. The installed VMD `scripts/vmd/loadplugins.tcl` additionally exposes
+the `scripts/init.d` hook. Its [developer's installation explanation](https://www.ks.uiuc.edu/Research/vmd/mailing_list/vmd-l/20951.html)
+describes placing packages in the plugin directory and registering them with
+`vmd_install_extension`. [Startup search order](https://www.ks.uiuc.edu/Research/vmd/current/ig/node8.html)
+explains why a personal startup-file shortcut could behave differently from
+opening VMD in its own installation directory.
