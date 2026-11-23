@@ -46,7 +46,9 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(self.native.read_bytes(),(PACKAGE/'bin/vmdcndb.dll').read_bytes())
         self.assertIn('vmd_install_extension',self.hook.read_text())
         state=json.loads((self.target/'install-state.json').read_text(encoding='utf-8-sig'))
-        self.assertEqual(Path(state['native']),self.native)
+        # PowerShell expands RUNNER~1 to runneradmin on hosted Windows; compare
+        # the file identity rather than the spelling of its absolute path.
+        self.assertTrue(Path(state['native']).samefile(self.native))
 
     def test_legacy_migration_preserves_defaults_and_user_commands(self):
         original='# retain defaults\nsource {C:/VMD/vmd.rc}\n# >>> vmd-cndb managed >>>\nset cndb_bootstrap old\n# <<< vmd-cndb managed <<<\n# later user command\n'
