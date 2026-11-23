@@ -18,7 +18,8 @@ override. Safe ASCII labels ≤15 bytes remain unchanged. Other labels receive
 unique ASCII tokens after all already-valid tokens have been reserved.
 
 Coordinates must be float32 or float64, with identical N across selected frames.
-Every loaded value must be finite and fit VMD's float range after scaling.
+Every loaded value must be finite and fit VMD's float range after the optional
+box-orientation rotation. Lengths are never rescaled.
 HDF5 reads one frame at a time and uses gzip/zlib, shuffle, and Fletcher32.
 SZIP, LZF, and custom codecs are not bundled. Local IO uses HDF5 directly rather
 than interpreting the remote byte index.

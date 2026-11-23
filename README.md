@@ -81,7 +81,7 @@ set m [vmdcndb::load {C:/data/my trajectory.cndb} -first 0 -last -1 -stride 5]
 set metadata [vmdcndb::info $m]
 dict get $metadata type_aliases
 set active [atomselect $m [vmdcndb::selection $m {active domain}]]
-vmdcndb::style $m {active domain} -color orange -radius 4.0
+vmdcndb::style $m {active domain} -color orange -radius 0.5
 $active delete
 ```
 
