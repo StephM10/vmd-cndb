@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.cndb binary
+# Keep third-party headers and license text byte-for-byte as distributed.
+third_party/** -text -whitespace
