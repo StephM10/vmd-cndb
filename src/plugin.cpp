@@ -57,7 +57,7 @@ int read_structure(void* data,int* flags,molfile_atom_t* atoms) {
       auto& a=atoms[i];std::memset(&a,0,sizeof(a));
       field(a.name,names[i]);field(a.type,m.aliases[i]);field(a.resname,resnames[i]);
       field(a.chain,shortchains.at(chains[i]));field(a.segid,segids[i]);a.resid=m.atoms[i].resid;
-      a.radius=1.5f;a.mass=1.0f;a.atomicnumber=0;
+      a.radius=static_cast<float>(m.default_radius);a.mass=1.0f;a.atomicnumber=0;
     }
     *flags=MOLFILE_RADIUS|MOLFILE_MASS|MOLFILE_ATOMICNUMBER;return MOLFILE_SUCCESS;
   } catch(const std::exception& e) {error(e);return MOLFILE_ERROR;}
@@ -109,14 +109,14 @@ Tcl_Obj* attrs(const cndb::Attributes& a) {
 }
 Tcl_Obj* metadata(const cndb::Metadata& m) {
   auto* d=dict();put(d,"path",s(m.path));put(d,"trajectory",s(m.trajectory));put(d,"layout",s(m.layout));
-  put(d,"beads",integer(m.beads));put(d,"total_frames",integer(m.total_frames));put(d,"units",s(m.units));put(d,"scale_to_angstrom",Tcl_NewDoubleObj(m.scale));
+  put(d,"beads",integer(m.beads));put(d,"total_frames",integer(m.total_frames));put(d,"units",s(m.units));put(d,"default_radius",Tcl_NewDoubleObj(m.default_radius));
   put(d,"header",attrs(m.header));put(d,"raw_types",strings(m.raw_types));put(d,"types",strings(m.types));put(d,"aliases",strings(m.aliases));
   put(d,"type_kind",s(m.type_kind));put(d,"type_source",s(m.type_source));put(d,"topology_source",s(m.topology_source));
   auto* map=dict();for(const auto& [type,alias]:m.type_aliases)Tcl_DictObjPut(nullptr,map,s(type),s(alias));put(d,"type_aliases",map);
   auto* bonds=list();for(std::size_t i=0;i<m.bond_from.size();++i){auto* pair=list();append(pair,integer(m.bond_from[i]));append(pair,integer(m.bond_to[i]));append(bonds,pair);}put(d,"bonds",bonds);
   auto* genomic=list();for(const auto& g:m.genomic){auto* row=list();for(auto x:g)append(row,Tcl_NewWideIntObj(x));append(genomic,row);}put(d,"genomic_position",genomic);
   auto* atoms=list();for(const auto& a:m.atoms){auto* row=dict();put(row,"name",s(a.name));put(row,"resname",s(a.resname));put(row,"chain",s(a.chain));put(row,"resid",Tcl_NewIntObj(a.resid));append(atoms,row);}put(d,"atoms",atoms);
-  auto* frames=list();for(const auto& f:m.frames){auto* row=dict();put(row,"id",s(f.id));put(row,"path",s(f.path));put(row,"attributes",attrs(f.attributes));put(row,"box_angstrom",numbers(f.box_angstrom));put(row,"cell",numbers(f.cell));put(row,"rotation",numbers(f.rotation));put(row,"time_ps",Tcl_NewDoubleObj(f.time_ps));append(frames,row);}put(d,"frames",frames);
+  auto* frames=list();for(const auto& f:m.frames){auto* row=dict();put(row,"id",s(f.id));put(row,"path",s(f.path));put(row,"attributes",attrs(f.attributes));put(row,"box_vectors",numbers(f.box_vectors));put(row,"cell",numbers(f.cell));put(row,"rotation",numbers(f.rotation));put(row,"time_ps",Tcl_NewDoubleObj(f.time_ps));append(frames,row);}put(d,"frames",frames);
   return d;
 }
 cndb::Options options(Tcl_Interp* ip,Tcl_Obj* obj) {
@@ -125,7 +125,10 @@ cndb::Options options(Tcl_Interp* ip,Tcl_Obj* obj) {
   struct End {Tcl_DictSearch* s;~End(){Tcl_DictObjDone(s);}}end{&search};
   for(;!done;Tcl_DictObjNext(&search,&key,&value,&done)) {
     std::string k=Tcl_GetString(key),v=Tcl_GetString(value);
-    if(k=="trajectory")o.trajectory=v;else if(k=="labels")o.labels=v;else if(k=="psf")o.psf=v;else if(k=="units")o.units=v;
+    if(k=="trajectory")o.trajectory=v;else if(k=="labels")o.labels=v;else if(k=="psf")o.psf=v;
+    else if(k=="radius") {
+      if(Tcl_GetDoubleFromObj(ip,value,&o.radius)!=TCL_OK)throw std::runtime_error("CNDB: radius must be numeric");
+    }
     else if(k=="first" || k=="last" || k=="stride") {
       Tcl_WideInt n;if(Tcl_GetWideIntFromObj(ip,value,&n)!=TCL_OK)throw std::runtime_error("CNDB: "+k+" must be an integer");
       if(k=="first")o.first=n;else if(k=="last")o.last=n;else o.stride=n;
@@ -157,11 +160,17 @@ int finish_cmd(ClientData,Tcl_Interp* ip,int objc,Tcl_Obj* const objv[]) {
   if(objc!=1){Tcl_WrongNumArgs(ip,1,objv,"");return TCL_ERROR;}
   auto* d=dict();put(d,"error",s(transaction.error));put(d,"frames_read",integer(transaction.read));transaction={};Tcl_SetObjResult(ip,d);return TCL_OK;
 }
+int radius_cmd(ClientData,Tcl_Interp* ip,int objc,Tcl_Obj* const objv[]) {
+  if(objc!=2){Tcl_WrongNumArgs(ip,1,objv,"radius");return TCL_ERROR;}
+  double value;if(Tcl_GetDoubleFromObj(ip,objv[1],&value)!=TCL_OK)return TCL_ERROR;
+  try {cndb::validate_radius(value);return TCL_OK;}
+  catch(const std::exception& e){Tcl_SetObjResult(ip,s(e.what()));return TCL_ERROR;}
+}
 } // namespace
 
 VMDPLUGIN_API int VMDPLUGIN_init() {
   plugin.abiversion=vmdplugin_ABIVERSION;plugin.type=MOLFILE_PLUGIN_TYPE;plugin.name="vmdcndb";
-  plugin.prettyname="CNDB (native, vmd-cndb)";plugin.author="Leren Wang";plugin.majorv=0;plugin.minorv=1;
+  plugin.prettyname="CNDB (native, vmd-cndb)";plugin.author="Leren Wang";plugin.majorv=0;plugin.minorv=2;
   plugin.is_reentrant=VMDPLUGIN_THREADUNSAFE;plugin.filename_extension="cndb";
   plugin.open_file_read=open_read;plugin.read_structure=read_structure;plugin.read_bonds=read_bonds;
   plugin.read_next_timestep=read_next;plugin.close_file_read=close_read;return VMDPLUGIN_SUCCESS;
@@ -174,5 +183,6 @@ extern "C" __declspec(dllexport) int Vmdcndb_Init(Tcl_Interp* ip) {
   Tcl_CreateObjCommand(ip,"::vmdcndb::inspect",inspect_cmd,nullptr,nullptr);
   Tcl_CreateObjCommand(ip,"::vmdcndb::_prepare",prepare_cmd,nullptr,nullptr);
   Tcl_CreateObjCommand(ip,"::vmdcndb::_finish",finish_cmd,nullptr,nullptr);
-  return Tcl_PkgProvide(ip,"vmdcndb_native","0.1.0");
+  Tcl_CreateObjCommand(ip,"::vmdcndb::_validate_radius",radius_cmd,nullptr,nullptr);
+  return Tcl_PkgProvide(ip,"vmdcndb_native","0.2.0");
 }

@@ -203,13 +203,6 @@ std::size_t beads(hid_t f,const std::string& path) {
   require(H5Tget_class(t)==H5T_FLOAT && (H5Tget_size(t)==4 || H5Tget_size(t)==8),"coordinates must be float32 or float64: "+path);
   return dims[0];
 }
-double unit_scale(const std::string& unit) {
-  if(unit=="nm" || unit=="nanometer" || unit=="nanometers" || unit=="nanometre") return 10;
-  if(unit=="angstrom" || unit=="angstroms" || unit=="A") return 1;
-  if(unit=="micrometer" || unit=="um") return 10000;
-  if(unit=="meter" || unit=="m") return 1e10;
-  fail("unknown coordinate units '"+unit+"'; use -units nm or -units angstrom explicitly");
-}
 std::vector<std::string> read_labels(const std::string& path,std::size_t n) {
   std::ifstream in(std::filesystem::u8path(path),std::ios::binary);
   require(in.good(),"cannot open labels TSV: "+path);
@@ -299,7 +292,7 @@ void psf(const std::string& path,Metadata& m) {
   require(atoms && bonds,"PSF must contain !NATOM and !NBOND sections");
   validate_bonds(m,endpoints); m.topology_source="psf: "+path;
 }
-void cell(FrameMeta& fm,const std::vector<double>& box,double scale) {
+void cell(FrameMeta& fm,const std::vector<double>& box) {
   require(box.size()==9,"box must contain nine row-major vector components");
   for(double v:box) require(std::isfinite(v),"box must be finite");
   using V=std::array<double,3>;
@@ -314,13 +307,13 @@ void cell(FrameMeta& fm,const std::vector<double>& box,double scale) {
   V e3{e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]};
   require(dot(c,e3)>1e-12*C,"box must be nondegenerate and right handed");
   auto angle=[&](const V& u,const V& v,double lengths){return std::acos(std::clamp(dot(u,v)/lengths,-1.0,1.0))*180.0/std::acos(-1.0);};
-  std::array<double,6> result{A*scale,B*scale,C*scale,angle(b,c,B*C),angle(a,c,A*C),angle(a,b,A*B)};
+  std::array<double,6> result{A,B,C,angle(b,c,B*C),angle(a,c,A*C),angle(a,b,A*B)};
   for(std::size_t i=0;i<result.size();++i) {
     require(std::isfinite(result[i]) && result[i]<=std::numeric_limits<float>::max(),"box exceeds VMD precision/range");
     fm.cell[i]=static_cast<float>(result[i]);
   }
   fm.rotation={e1[0],e1[1],e1[2],e2[0],e2[1],e2[2],e3[0],e3[1],e3[2]};
-  for(auto x:box) fm.box_angstrom.push_back(x*scale);
+  fm.box_vectors=box;
 }
 } // namespace
 
@@ -342,8 +335,13 @@ std::vector<std::string> aliases(const std::vector<std::string>& labels,std::siz
 }
 struct Reader::Impl { H file; explicit Impl(H&& f):file(std::move(f)) {} };
 Reader::~Reader() = default;
+void validate_radius(double radius) {
+  require(std::isfinite(radius) && radius>0 && radius<=std::numeric_limits<float>::max() && static_cast<float>(radius)>0,"radius must be finite, positive, and fit VMD float precision");
+}
 Reader::Reader(const std::string& path,const Options& o) {
   Quiet quiet;
+  validate_radius(o.radius);
+  meta_.default_radius=o.radius;
   impl_=std::make_unique<Impl>(file(path)); auto f=static_cast<hid_t>(impl_->file);
   auto choices=trajectories(f); const Trajectory* selected=nullptr;
   if(o.trajectory.empty()) { require(choices.size()==1,"multiple trajectories: select -trajectory using inspect"); selected=&choices[0]; }
@@ -360,10 +358,10 @@ Reader::Reader(const std::string& path,const Options& o) {
     require(version.empty() || version=="2.0","unsupported CNDB format_version: "+version);
     auto name=scalar(meta_.header,"format_name");
     require(name.empty() || name=="OpenMiChroM-CNDB","unrecognized Header format_name: "+name);
-    require(o.units!="auto" || meta_.header.count("coordinate_units"),"Header is present but coordinate_units is missing; set -units explicitly");
   }
-  meta_.units=o.units=="auto"?scalar(meta_.header,"coordinate_units","nanometer"):o.units;
-  meta_.scale=unit_scale(meta_.units);
+  // Unit metadata describes the source. It never triggers a length conversion:
+  // coordinates, box, and display radii all use the trajectory's native unit.
+  meta_.units=scalar(meta_.header,"coordinate_units","unspecified");
   auto types=dataset(f,t.base+"types");
   require(types.shape==std::vector<std::size_t>{meta_.beads} && (types.kind=="string" || types.kind=="integer" || types.kind=="float"),"types must be a one-dimensional string or numeric array of length N");
   if(types.kind=="float") for(const auto& x:types.values) require(std::isfinite(std::stod(x)),"type values must be finite");
@@ -399,7 +397,7 @@ Reader::Reader(const std::string& path,const Options& o) {
       require(b.shape==std::vector<std::size_t>{3,3} && b.kind!="string","frame box must have numeric shape (3,3)");
       for(const auto& v:b.values) box.push_back(std::stod(v));
     }
-    if(!box.empty()) cell(fm,box,meta_.scale);
+    if(!box.empty()) cell(fm,box);
     auto time=scalar(fm.attributes,"time_ps");
     if(!time.empty()) fm.time_ps=std::stod(time);
     else if(fm.attributes.count("time")) {
@@ -417,12 +415,12 @@ Frame Reader::read(std::size_t index) const {
   Quiet quiet; require(index<meta_.frames.size(),"selected frame index outside range");
   const auto& fm=meta_.frames[index]; auto f=static_cast<hid_t>(impl_->file);
   H d(H5Dopen2(f,fm.path.c_str(),H5P_DEFAULT),H5Dclose);
-  // Convert f64 and scale in double before the final, unavoidable VMD float cast.
+  // Preserve native lengths; rotate only to VMD's canonical cell orientation.
   std::vector<double> xyz(meta_.beads*3);
   require(H5Dread(d,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,H5P_DEFAULT,xyz.data())>=0,"cannot decode frame "+fm.id+" (damaged dataset or unavailable HDF5 filter)");
   Frame out; out.xyz.resize(xyz.size());
   for(std::size_t i=0;i<meta_.beads;++i) for(std::size_t k=0;k<3;++k) {
-    double value=0; for(std::size_t j=0;j<3;++j) value+=fm.rotation[3*k+j]*xyz[3*i+j]*meta_.scale;
+    double value=0; for(std::size_t j=0;j<3;++j) value+=fm.rotation[3*k+j]*xyz[3*i+j];
     require(std::isfinite(value) && std::abs(value)<=std::numeric_limits<float>::max(),"nonfinite or out-of-range coordinate in frame "+fm.id+"; v1 requires complete simulation coordinates");
     out.xyz[3*i+k]=static_cast<float>(value);
   }

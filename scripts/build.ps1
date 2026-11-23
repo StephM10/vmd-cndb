@@ -39,10 +39,10 @@ Copy-Item -LiteralPath (Join-Path $zlib 'LICENSE') -Destination (Join-Path $repo
 Run-CMake (@('-S',$repo,'-B',"$BuildRoot/plugin", "-DCMAKE_PREFIX_PATH=$prefix", "-DTCL_SOURCE_DIR=$tcl") + $common)
 Run-CMake @('--build',"$BuildRoot/plugin",'--config','Release','--parallel')
 if ($Package) {
-    $stage = Join-Path $repo 'dist/vmd-cndb-0.1.0-windows-x64'
+    $stage = Join-Path $repo 'dist/vmd-cndb-0.2.0-windows-x64'
     Run-CMake @('--install',"$BuildRoot/plugin",'--config','Release','--prefix',$stage)
     Compress-Archive -Path "$stage/*" -DestinationPath "$stage.zip" -Force
     $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath "$stage.zip").Hash.ToLowerInvariant()
-    "$checksum  vmd-cndb-0.1.0-windows-x64.zip" | Set-Content -LiteralPath "$stage.zip.sha256" -Encoding ascii
+    "$checksum  vmd-cndb-0.2.0-windows-x64.zip" | Set-Content -LiteralPath "$stage.zip.sha256" -Encoding ascii
     Write-Output "Windows ZIP: $stage.zip ($checksum)"
 }

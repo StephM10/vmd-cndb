@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 — 2026-11-23
+
+- Fix the length-convention bug: preserve native coordinate and box lengths.
+- Use the same trajectory unit for global and type-specific radii; default 0.5.
+- Remove automatic unit conversion and its GUI selector and `-units` API option.
+- Retain Header units as metadata; use `unspecified` when absent.
+- Replace `box_angstrom` with `box_vectors` and remove `scale_to_angstrom`.
+- Add native-unit and radius regression coverage in the reader and real VMD.
+- Add a global radius input and per-type radius/color readback in the GUI.
+- Correct the Windows VMD 2 menu documentation to Plugins → CNDB Loader.
+
 ## 0.1.0 — 2026-11-22
 
 - Native Windows x64 CNDB reader for legacy OpenMiChroM, chromdyn, and CNDB v2.

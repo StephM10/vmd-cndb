@@ -18,12 +18,12 @@ proc run_smoke {} {
     assert {[lmap f [dict get $meta frames] {dict get $f id}] eq {0 3 6 9 12 15 18}} {frame IDs failed}
     set sel [atomselect $id all frame 0]
     set xyz [$sel get {x y z}]
-    assert {abs([lindex $xyz 0 0] - 20) < 1e-5 && abs([lindex $xyz 0 2] + 30) < 1e-5} {nm to angstrom failed}
+    assert {abs([lindex $xyz 0 0] - 2) < 1e-5 && abs([lindex $xyz 0 2] + 3) < 1e-5} {native coordinates changed}
     assert {[lindex [$sel get type] 16] eq {B1}} {short type was altered}
     set bonds [$sel getbonds]
     assert {[lindex $bonds 0] eq {1} && [lindex $bonds 31] eq {30}} {linear bonds failed}
     assert {[llength [lindex $bonds 15]] == 2} {unexpected distance-inferred bonds}
-    assert {[molinfo $id get {a b c}] eq {120.000000 120.000000 120.000000} || abs([lindex [molinfo $id get {a b c}] 0]-120) < 1e-5} {periodic box failed}
+    assert {[molinfo $id get {a b c}] eq {12.000000 12.000000 12.000000} || abs([lindex [molinfo $id get {a b c}] 0]-12) < 1e-5} {periodic box failed}
     set a [atomselect $id [::vmdcndb::selection $id {active domain}]]
     assert {[$a num] == 16} {long type selection failed}
     ::vmdcndb::style $id {active domain} -color orange -radius 4.2
@@ -51,6 +51,25 @@ proc run_smoke {} {
         menu vmdcndb on
         set w .vmdcndb
         assert {[winfo exists $w] && [winfo exists .vmdcndb.trajectory]} {loader window missing}
+        assert {![winfo exists .vmdcndb.eunits]} {obsolete unit conversion control remains}
+        set ::vmdcndb::ui(file) $example
+        set ::vmdcndb::ui(first) 0
+        set ::vmdcndb::ui(last) 0
+        set ::vmdcndb::ui(default_radius) 0.7
+        ::vmdcndb::gui_inspect
+        ::vmdcndb::gui_load
+        set m $::vmdcndb::ui(molecule)
+        set s [atomselect $m all]
+        foreach r [$s get radius] {assert {abs($r-0.7)<1e-6} {GUI default radius failed}}
+        ::vmdcndb::style $m {active domain} -radius 0.25
+        set ::vmdcndb::ui(type) {active domain}
+        event generate .vmdcndb.types <<ComboboxSelected>>
+        assert {$::vmdcndb::ui(radius) == 0.25} {type radius readback failed}
+        set ::vmdcndb::ui(type) B1
+        event generate .vmdcndb.types <<ComboboxSelected>>
+        assert {$::vmdcndb::ui(radius) == 0.7} {type radius readback leaked from another type}
+        $s delete
+        mol delete $m
         puts {CNDB_GUI_OK}
         destroy $w
     }

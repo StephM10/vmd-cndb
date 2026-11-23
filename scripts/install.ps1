@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $package = $PSScriptRoot
 if (!(Test-Path -LiteralPath (Join-Path $package 'bin/vmdcndb.dll'))) { throw 'Run install.ps1 from the extracted Windows ZIP.' }
 if (!(Test-Path -LiteralPath (Join-Path $VmdDir 'vmd.exe'))) { throw "VMD not found: $VmdDir" }
-if (!$Destination) { $Destination = Join-Path $env:LOCALAPPDATA 'VMD-CNDB/0.1.0' }
+if (!$Destination) { $Destination = Join-Path $env:LOCALAPPDATA 'VMD-CNDB/0.2.0' }
 $Destination = [IO.Path]::GetFullPath($Destination)
 if ($Destination -eq [IO.Path]::GetFullPath($package)) { throw 'Choose an installation directory separate from the extracted ZIP.' }
 $manifestPath = Join-Path $Destination 'install-state.json'
@@ -74,7 +74,7 @@ foreach ($plan in $plans) {
     }
     [IO.File]::WriteAllText($path,$updated,$encoding)
     $state += [pscustomobject]@{path=$path; backup=$backup}
-    [pscustomobject]@{project='vmd-cndb';version='0.1.0';destination=$Destination;startup=$state} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    [pscustomobject]@{project='vmd-cndb';version='0.2.0';destination=$Destination;startup=$state} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 }
 if ($personalStartup -and $env:APPDATA) {
     $menu = Join-Path $env:APPDATA 'Microsoft/Windows/Start Menu/Programs'
@@ -90,5 +90,5 @@ if ($personalStartup -and $env:APPDATA) {
     Write-Output "Start menu shortcut: $shortcutPath"
 }
 Write-Output "Installed CNDB Loader: $Destination"
-Write-Output 'Open VMD CNDB Loader from Start, then choose Extensions > CNDB Loader. Configurations have timestamped backups.'
+Write-Output 'Open VMD CNDB Loader from Start, then choose Plugins > CNDB Loader. Configurations have timestamped backups.'
 Write-Output "To remove startup integration: & '$Destination\uninstall.ps1'"

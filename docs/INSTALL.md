@@ -41,6 +41,6 @@ normal VMD launcher after removal; the personal file still sources VMD defaults.
 
 If the extension fails to appear, inspect VMD's text console for `CNDB Loader:`.
 Check that it is a Windows x64 Tcl 8.6 build and that VMD used the expected
-startup file. `package present vmdcndb` should return `0.1.0`; `vmdcndb::inspect`
+startup file. `package present vmdcndb` should return `0.2.0`; `vmdcndb::inspect`
 should list the example trajectory. A fresh VMD process is required after
 replacing the loaded DLL.

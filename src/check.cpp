@@ -32,7 +32,7 @@ void attrs(std::ostream& out,const cndb::Attributes& attrs) {
 }
 int run(int argc,char** argv) {
   try {
-    if(argc<3) throw std::runtime_error("usage: cndb_check inspect|read FILE [--trajectory NAME --labels TSV --psf PSF --units nm|angstrom --first N --last N --stride N --box a,b,c,... --stress N]");
+    if(argc<3) throw std::runtime_error("usage: cndb_check inspect|read FILE [--trajectory NAME --labels TSV --psf PSF --radius N --first N --last N --stride N --box a,b,c,... --stress N]");
     const std::string command=argv[1],path=argv[2];
     if(command=="inspect") {
       auto summary=cndb::inspect(path);
@@ -46,7 +46,8 @@ int run(int argc,char** argv) {
       if(k=="--trajectory")options.trajectory=v;
       else if(k=="--labels")options.labels=v;
       else if(k=="--psf")options.psf=v;
-      else if(k=="--units")options.units=v;
+      else if(k=="--radius")options.radius=std::stod(v);
+      else if(k=="--units")throw std::runtime_error("CNDB: --units was removed; v0.2 preserves trajectory length units");
       else if(k=="--first")options.first=std::stoll(v);
       else if(k=="--last")options.last=std::stoll(v);
       else if(k=="--stride")options.stride=std::stoll(v);
@@ -68,7 +69,7 @@ int run(int argc,char** argv) {
     cndb::Reader r(path,options);const auto& m=r.metadata();std::cout.precision(17);
     // Buffer the diagnostic JSON so an invalid later frame never yields partial JSON.
     std::ostringstream out;out.precision(17);
-    out<<"{\"beads\":"<<m.beads<<",\"trajectory\":"<<q(m.trajectory)<<",\"layout\":"<<q(m.layout)<<",\"total_frames\":"<<m.total_frames<<",\"units\":"<<q(m.units)<<",\"scale\":"<<m.scale<<",\"type_kind\":"<<q(m.type_kind)<<",\"type_source\":"<<q(m.type_source)<<",\"topology_source\":"<<q(m.topology_source)<<",\"header\":";attrs(out,m.header);
+    out<<"{\"beads\":"<<m.beads<<",\"trajectory\":"<<q(m.trajectory)<<",\"layout\":"<<q(m.layout)<<",\"total_frames\":"<<m.total_frames<<",\"units\":"<<q(m.units)<<",\"default_radius\":"<<m.default_radius<<",\"type_kind\":"<<q(m.type_kind)<<",\"type_source\":"<<q(m.type_source)<<",\"topology_source\":"<<q(m.topology_source)<<",\"header\":";attrs(out,m.header);
     out<<",\"raw_types\":";strings(out,m.raw_types);out<<",\"types\":";strings(out,m.types);out<<",\"aliases\":";strings(out,m.aliases);
     out<<",\"atoms\":";array(out,m.atoms,[&](const auto& a){out<<"{\"name\":"<<q(a.name)<<",\"resname\":"<<q(a.resname)<<",\"chain\":"<<q(a.chain)<<",\"resid\":"<<a.resid<<'}';});
     out<<",\"bonds\":[";for(std::size_t i=0;i<m.bond_from.size();++i){if(i)out<<',';out<<'['<<m.bond_from[i]<<','<<m.bond_to[i]<<']';}out<<']';
@@ -77,7 +78,7 @@ int run(int argc,char** argv) {
     for(std::size_t i=0;i<m.frames.size();++i) {
       if(i)out<<',';const auto& fm=m.frames[i];auto frame=r.read(i);
       out<<"{\"id\":"<<q(fm.id)<<",\"cell\":";array(out,fm.cell,[&](auto x){out<<x;});
-      out<<",\"box_angstrom\":";array(out,fm.box_angstrom,[&](auto x){out<<x;});
+      out<<",\"box_vectors\":";array(out,fm.box_vectors,[&](auto x){out<<x;});
       out<<",\"rotation\":";array(out,fm.rotation,[&](auto x){out<<x;});
       out<<",\"time_ps\":"<<fm.time_ps<<",\"attributes\":";attrs(out,fm.attributes);
       out<<",\"xyz\":";array(out,frame.xyz,[&](auto x){out<<x;});out<<'}';

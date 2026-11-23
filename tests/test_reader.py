@@ -86,17 +86,17 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(result['types'], ['A1', 'B1', 'custom'])
         self.assertEqual(result['bonds'], [[1, 2], [2, 3]])
         for frame in result['frames']:
-            np.testing.assert_array_equal(np.array(frame['xyz'], dtype='f4').reshape(3, 3), (ref['/', frame['id']] * 10).astype('f4'))
+            np.testing.assert_array_equal(np.array(frame['xyz'], dtype='f4').reshape(3, 3), ref['/', frame['id']].astype('f4'))
 
     def test_float32_gzip_shuffle_fletcher32(self):
         ref = write(self.file, dtype='f4', compressed=True)
         for frame in self.invoke()['frames']:
-            np.testing.assert_array_equal(np.array(frame['xyz'], dtype='f4').reshape(3, 3), (ref['/', frame['id']].astype('f8') * 10).astype('f4'))
+            np.testing.assert_array_equal(np.array(frame['xyz'], dtype='f4').reshape(3, 3), ref['/', frame['id']].astype('f4'))
 
     def test_v2_root_header_genomic_and_time(self):
         write(self.file, version=True, units='angstrom')
         r = self.invoke()
-        self.assertEqual(r['scale'], 1)
+        self.assertEqual(r['units'], 'angstrom')
         self.assertEqual(r['genomic_position'][0], [2**53 + 3, 2**53 + 10])
         self.assertEqual(r['header']['indexed']['values'], ['1'])
         self.assertEqual(r['frames'][-1]['time_ps'], 5)
@@ -110,7 +110,7 @@ class ReaderTest(unittest.TestCase):
         r = self.invoke('read', None, '--trajectory', 'replica2_chr7')
         self.assertEqual([f['id'] for f in r['frames']], ['t_0', 't_2', 't_10'])
         for frame in r['frames']:
-            np.testing.assert_array_equal(np.array(frame['xyz'], dtype='f4').reshape(3, 3), (ref['replica2_chr7', frame['id']] * 10).astype('f4'))
+            np.testing.assert_array_equal(np.array(frame['xyz'], dtype='f4').reshape(3, 3), ref['replica2_chr7', frame['id']].astype('f4'))
 
     def test_frame_range_selects_sorted_positions(self):
         write(self.file)
@@ -166,8 +166,8 @@ class ReaderTest(unittest.TestCase):
         box = np.array([[8., 0, 0], [1, 9, 0], [2, 1, 10]])
         lengths = np.linalg.norm(box, axis=1)
         angles = [np.degrees(np.arccos(np.dot(box[i], box[j]) / lengths[i] / lengths[j])) for i, j in [(1, 2), (0, 2), (0, 1)]]
-        np.testing.assert_allclose(r['frames'][0]['cell'], [*list(lengths*10), *angles], rtol=1e-6)
-        np.testing.assert_array_equal(np.array(r['frames'][0]['box_angstrom']).reshape(3, 3), box*10)
+        np.testing.assert_allclose(r['frames'][0]['cell'], [*list(lengths), *angles], rtol=1e-6)
+        np.testing.assert_array_equal(np.array(r['frames'][0]['box_vectors']).reshape(3, 3), box)
 
     def test_explicit_psf_overrides_embedded_topology(self):
         write(self.file, topology=True)
@@ -184,8 +184,8 @@ class ReaderTest(unittest.TestCase):
         f = r['frames'][0]
         xyz = np.array(f['xyz']).reshape(3, 3)
         rotation = np.array(f['rotation']).reshape(3, 3)
-        np.testing.assert_allclose(xyz, ref['/', '0'] @ rotation.T * 10, rtol=2e-7)
-        np.testing.assert_allclose(np.linalg.norm(xyz[1]-xyz[0]), np.linalg.norm(ref['/', '0'][1]-ref['/', '0'][0])*10, rtol=2e-7)
+        np.testing.assert_allclose(xyz, ref['/', '0'] @ rotation.T, rtol=2e-7)
+        np.testing.assert_allclose(np.linalg.norm(xyz[1]-xyz[0]), np.linalg.norm(ref['/', '0'][1]-ref['/', '0'][0]), rtol=2e-7)
 
     def test_empty_embedded_bonds_remain_empty(self):
         write(self.file, topology=True)
@@ -210,7 +210,7 @@ class ReaderTest(unittest.TestCase):
         self.invoke('failure-loop')
 
     def test_invalid_shape_type_bonds_and_units(self):
-        for mode in ['shape', 'types', 'bonds', 'units', 'box', 'duplicates']:
+        for mode in ['shape', 'types', 'bonds', 'box', 'duplicates']:
             write(self.file, topology=True, version=True)
             with h5py.File(self.file, 'r+') as f:
                 if mode == 'shape':
@@ -218,7 +218,6 @@ class ReaderTest(unittest.TestCase):
                 elif mode == 'types':
                     del f['types']; f.create_dataset('types', data=np.array([1, 2]))
                 elif mode == 'bonds': f['topology/bonds'][0, 1] = 10
-                elif mode == 'units': f['Header'].attrs['coordinate_units'] = 'unknown'
                 elif mode == 'box': f['0'].attrs['box'] = np.zeros((3, 3))
                 elif mode == 'duplicates': f.create_dataset('t_2', data=np.zeros((3, 3)))
             self.invoke(success=False)
@@ -230,11 +229,33 @@ class ReaderTest(unittest.TestCase):
         self.invoke('failure-loop')
         self.invoke('read', self.root / 'missing.cndb', success=False)
 
-    def test_missing_units_requires_explicit_override(self):
-        write(self.file, version=True)
+    def test_missing_units_preserves_values_without_guessing(self):
+        ref = write(self.file, version=True)
         with h5py.File(self.file, 'r+') as f: del f['Header'].attrs['coordinate_units']
-        self.invoke(success=False)
-        self.assertEqual(self.invoke('read', None, '--units', 'nm')['scale'], 10)
+        r = self.invoke()
+        self.assertEqual(r['units'], 'unspecified')
+        np.testing.assert_array_equal(np.array(r['frames'][0]['xyz'], dtype='f4').reshape(3, 3), ref['/', '0'].astype('f4'))
+
+    def test_declared_units_never_rescale_coordinates_or_box(self):
+        for unit in ['nanometer', 'angstrom', 'reduced', 'sigma', 'unknown']:
+            ref = write(self.file, version=True, units=unit, box=True)
+            r = self.invoke()
+            self.assertEqual(r['units'], unit)
+            self.assertNotIn('scale', r)
+            for f in r['frames']:
+                np.testing.assert_array_equal(np.array(f['xyz'], dtype='f4').reshape(3, 3), ref['/', f['id']].astype('f4'))
+                np.testing.assert_array_equal(np.array(f['box_vectors']).reshape(3, 3), [[8.,0,0],[1,9,0],[2,1,10]])
+
+    def test_default_and_override_radius_use_native_lengths(self):
+        write(self.file)
+        self.assertEqual(self.invoke()['default_radius'], 0.5)
+        self.assertEqual(self.invoke('read', None, '--radius', 0.8)['default_radius'], 0.8)
+        for bad in ['0', '-1', 'nan', 'inf', '1e39', '1e-50']:
+            self.assertIn('radius', self.invoke('read', None, '--radius', bad, success=False))
+
+    def test_removed_conversion_option_reports_migration(self):
+        write(self.file)
+        self.assertIn('preserves trajectory', self.invoke('read', None, '--units', 'nm', success=False))
 
 
 if __name__ == '__main__':

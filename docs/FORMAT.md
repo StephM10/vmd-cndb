@@ -23,11 +23,12 @@ HDF5 reads one frame at a time and uses gzip/zlib, shuffle, and Fletcher32.
 SZIP, LZF, and custom codecs are not bundled. Local IO uses HDF5 directly rather
 than interpreting the remote byte index.
 
-With no Header, existing OpenMiChroM/chromdyn writers' nm convention applies.
-With a Header, `coordinate_units` is required unless the user supplies `-units`.
-Supported units are nm/nanometer(s)/nanometre, A/angstrom(s), um/micrometer,
-and m/meter. A declared `format_version` must be `2.0`; a declared `format_name`
-must be `OpenMiChroM-CNDB`.
+All lengths remain in the trajectory's native unit, including coordinates,
+periodic boxes, default radius (0.5), and type-specific radii. Optional Header
+`coordinate_units` is an informational label; arbitrary unit names, including
+reduced units, are preserved. Missing units are labeled `unspecified`. There is
+no length conversion or inferred physical calibration. A declared
+`format_version` must be `2.0`; a declared `format_name` must be `OpenMiChroM-CNDB`.
 
 The per-frame numeric `box` attribute must be 3×3 vectors in coordinate units.
 `-box` overrides it. Cell lengths and angles are computed from the Gram matrix.

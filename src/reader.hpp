@@ -15,7 +15,8 @@ struct Attribute {
 };
 using Attributes = std::map<std::string, Attribute>;
 struct Options {
-  std::string trajectory, labels, psf, units = "auto";
+  std::string trajectory, labels, psf;
+  double radius = 0.5; // Same native length unit as coordinates and box.
   std::int64_t first = 0, last = -1, stride = 1;
   std::vector<double> box; // Nine row-major vectors, in input coordinate units.
 };
@@ -27,14 +28,14 @@ struct Atom {
 struct FrameMeta {
   std::string id, path;
   Attributes attributes;
-  std::vector<double> box_angstrom; // Original orientation, for provenance.
+  std::vector<double> box_vectors; // Native length units, original orientation.
   std::array<double, 9> rotation{1,0,0, 0,1,0, 0,0,1};
   std::array<float, 6> cell{0,0,0,90,90,90};
   double time_ps = 0;
 };
 struct Metadata {
   std::string path, trajectory, layout, units, type_kind, type_source, topology_source;
-  double scale = 10;
+  double default_radius = 0.5;
   std::size_t beads = 0, total_frames = 0;
   Attributes header;
   std::vector<std::string> raw_types, types, aliases;
@@ -60,5 +61,6 @@ private:
 };
 std::vector<Summary> inspect(const std::string& path);
 std::vector<std::string> aliases(const std::vector<std::string>& labels, std::size_t width);
+void validate_radius(double radius);
 std::int64_t open_hdf5_objects();
 } // namespace cndb

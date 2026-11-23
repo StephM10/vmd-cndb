@@ -8,11 +8,11 @@ Load `tcl/bootstrap.tcl` once, or use the installer. Namespace: `::vmdcndb`.
 | `load FILE ?-option value ...?` | New molecule ID after all selected frames load |
 | `info MOLID` | Metadata for that molecule |
 | `selection MOLID TYPE` | Safe VMD selection expression for the full label |
-| `style MOLID TYPE ?-color NAME? ?-radius ANGSTROM?` | Modify the type in that molecule |
+| `style MOLID TYPE ?-color NAME? ?-radius VALUE?` | Modify the type in that molecule, in trajectory units |
 
 `load` options: `-trajectory` (required when several exist), `-first 0`,
 `-last -1` (inclusive final position), `-stride 1`, `-labels {}`, `-psf {}`,
-`-units auto`, `-box {}`. First/last use sorted ordinal positions, not stored
+`-radius 0.5`, `-box {}`. First/last use sorted ordinal positions, not stored
 frame IDs. `-box` contains nine row-major vector components in input units;
 it overrides file boxes for all loaded frames.
 
@@ -24,13 +24,21 @@ has copied the selected frames, no HDF5 handle remains open.
 
 `info` returns:
 
-- `path`, `trajectory`, `layout`, `beads`, `total_frames`, `units`, `scale_to_angstrom`.
+- `path`, `trajectory`, `layout`, `beads`, `total_frames`, `units`, `default_radius`.
 - `raw_types`, `type_kind` (source HDF5 kind), `types`, `aliases`, `type_aliases`, `type_source`.
 - `atoms` (original names, residue names/IDs, full chain labels), `bonds` (one-based pairs), `topology_source`.
 - `genomic_position` (exact signed 64-bit interval endpoints, if present).
 - `header`, and `frames`, with original frame `id` and HDF5 `path`, attributes,
-  `box_angstrom`, canonical VMD `cell`, `rotation`, and `time_ps`.
+  `box_vectors` (native source lengths), canonical VMD `cell`, `rotation`, and `time_ps`.
 - `representations`: full type → stable VMD representation name.
+- `type_styles`: full type → applied `color` and `radius` (trajectory units).
+
+Length values always remain in the source trajectory unit. `units` is the Header's
+label or `unspecified`; it does not select a conversion. V0.2 removes `-units`,
+`scale_to_angstrom`, and `box_angstrom`. Migrate to the native values and
+`box_vectors`; remove `-units` from scripts. A legacy `-units` argument produces
+an explicit migration error. Both default and type-specific radii use the same
+validation and native length convention as the molecule. See [length units](LENGTH_UNITS.md).
 
 Attributes are dictionaries with `kind`, `shape`, and `values`. Values are
 lossless text for integers and UTF-8 strings, and round-trip decimal text for

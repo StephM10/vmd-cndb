@@ -3,8 +3,8 @@
 Open CNDB simulation trajectories directly in **Windows VMD**. No XTC conversion,
 Python environment, or Conda installation is needed to use the prebuilt plugin.
 
-**Early release: v0.1.0.** Native C++/HDF5 reader, Tcl 8.6 extension, and an
-**Extensions → CNDB Loader** window. Tested with the installed VMD 2.0 Windows
+**Early release: v0.2.0.** Native C++/HDF5 reader, Tcl 8.6 extension, and an
+**Plugins → CNDB Loader** window. Tested with the installed VMD 2.0 Windows
 alpha (banner 2.0.0a7; internal version 2.0.0a6), molfile ABI 18, x64.
 
 ## Install
@@ -20,10 +20,10 @@ alpha (banner 2.0.0a7; internal version 2.0.0a6), molfile ABI 18, x64.
    The default VMD path is `C:\Program Files\University of Illinois\VMD2`.
    Supply `-VmdDir 'D:\path\to\VMD'` if needed. The default installation uses
    your personal startup file and requires no administrator rights.
-4. Open **VMD CNDB Loader** from Windows Start and choose **Extensions → CNDB Loader**.
+4. Open **VMD CNDB Loader** from Windows Start and choose **Plugins → CNDB Loader**.
 5. Browse to `examples/demo.cndb`, click **Inspect**, then **Load as new molecule**.
 
-The installer copies the package to `%LOCALAPPDATA%\VMD-CNDB\0.1.0`. It appends a
+The installer copies the package to `%LOCALAPPDATA%\VMD-CNDB\0.2.0`. It appends a
 marked bootstrap block to your personal `vmd.rc`, preserving its commands and
 timestamped backups. A new personal file sources the installed defaults. If you launch
 VMD from a directory containing another `vmd.rc`, run the installer with
@@ -51,7 +51,11 @@ VMD retains loaded frames in memory; select a range and stride for large files.
 
 Types are category labels. Numeric labels retain their numbers; string labels
 retain their text. Beads use generic structure fields, with no amino-acid mapping.
-Choose a type in the loader to set its color and radius (Å).
+All lengths use the **trajectory's native unit**. Coordinates and periodic boxes
+keep their source lengths. The default bead radius is **0.5 in that same unit**;
+set it before loading or override individual types afterward. A bond length of 1
+and radius of 0.5 therefore stay in the ratio 1:0.5. Header unit names are retained
+as metadata and never trigger a conversion. See [length units](docs/LENGTH_UNITS.md).
 
 Override types for a particular load with a UTF-8 `labels.tsv`:
 
@@ -82,14 +86,16 @@ $active delete
 ```
 
 For multi-trajectory files, pass `-trajectory {/replica name}` from `inspect`.
-Optional inputs: `-labels FILE`, `-psf FILE`, `-units auto|nm|angstrom`, and
+Optional inputs: `-labels FILE`, `-psf FILE`, `-radius 0.5`, and
 `-box {ax ay az bx by bz cx cy cz}` in input coordinate units. Topology priority:
 **explicit PSF → embedded topology → one linear chain**. Embedded topology with
 no bonds remains unbonded. PSF files must use sequential one-based atom IDs and
 integer residue IDs. Bead order must match the CNDB.
 
-Coordinates and boxes are converted to Å. Old files default to nm; v2 reads
-`Header.coordinate_units`. Boxes with rotated axes are transformed to VMD's
+**v0.2 removes v0.1's automatic nm→Å scaling and the `-units` option.**
+Files without unit metadata are labeled `unspecified`. VMD's built-in measurement
+or export labels may still say Å; interpret their numbers in the source unit.
+Boxes with rotated axes are transformed to VMD's
 canonical cell orientation, including the coordinates; original vectors and
 rotation matrices remain in the metadata. See [format details](docs/FORMAT.md)
 and [API](docs/API.md).
@@ -103,7 +109,7 @@ connection for pinned source archives:
 .\scripts\build.ps1 -Package
 python -m pip install -r tests/requirements.txt
 python tests/test_reader.py --exe build/plugin/Release/cndb_check.exe
-python tests/test_installer.py --package dist/vmd-cndb-0.1.0-windows-x64
+python tests/test_installer.py --package dist/vmd-cndb-0.2.0-windows-x64
 ```
 
 HDF5 1.14.6, zlib 1.3.1, the Microsoft C/C++ runtime, and the Tcl stub library are
@@ -114,7 +120,7 @@ runs the reader and installer tests without redistributing VMD.
 For a real VMD integration test:
 
 ```powershell
-python tests/run_vmd.py --vmd 'C:/Program Files/University of Illinois/VMD2/vmd.exe' --package dist/vmd-cndb-0.1.0-windows-x64 --log build/vmd-test.log
+python tests/run_vmd.py --vmd 'C:/Program Files/University of Illinois/VMD2/vmd.exe' --package dist/vmd-cndb-0.2.0-windows-x64 --log build/vmd-test.log
 ```
 
 Add `--gui` to exercise the Tk window. After installation, add `--normal-startup`

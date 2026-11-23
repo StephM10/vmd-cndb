@@ -2,7 +2,7 @@
 namespace eval ::vmdcndb {
     variable records [dict create]
     variable ui
-    array set ui {file {} trajectory {} first 0 last -1 stride 1 labels {} psf {} units auto box {} status {} molecule {} type {} color red radius 1.5}
+    array set ui {file {} trajectory {} first 0 last -1 stride 1 labels {} psf {} box {} status {} molecule {} type {} color red radius 0.5 default_radius 0.5 unit_text {Lengths: native trajectory units}}
 }
 proc ::vmdcndb::_molecule_changed {name id operation} {
     variable records
@@ -14,9 +14,10 @@ trace add variable ::vmd_molecule write ::vmdcndb::_molecule_changed
 
 proc ::vmdcndb::load {path args} {
     variable records
-    set options [dict create trajectory {} first 0 last -1 stride 1 labels {} psf {} units auto box {}]
+    set options [dict create trajectory {} first 0 last -1 stride 1 labels {} psf {} radius 0.5 box {}]
     if {[llength $args] % 2} { error {CNDB: options require -name value pairs} }
     foreach {key value} $args {
+        if {$key eq {-units}} {error {CNDB: -units was removed; v0.2 preserves trajectory length units}}
         if {![string match -* $key] || ![dict exists $options [string range $key 1 end]]} {
             error "CNDB: unknown option $key"
         }
@@ -44,7 +45,7 @@ proc ::vmdcndb::load {path args} {
     dict set records $id $meta
     mol rename $id "CNDB: [file tail $path] [dict get $meta trajectory]"
     mol modcolor 0 $id ColorID 8
-    mol modstyle 0 $id Bonds 0.3 12
+    mol modstyle 0 $id Bonds 0.1 12
     set palette {red blue green orange yellow cyan purple pink tan silver lime magenta}
     set n 0
     dict for {type alias} [dict get $meta type_aliases] {
@@ -57,6 +58,7 @@ proc ::vmdcndb::load {path args} {
         mol modstyle $rep $id VDW 1.0 12
         mol modcolor $rep $id ColorID [colorinfo index $color]
         dict set meta representations $type [mol repname $id $rep]
+        dict set meta type_styles $type [dict create color $color radius [dict get $meta default_radius]]
         incr n
     }
     dict set records $id $meta
@@ -81,14 +83,14 @@ proc ::vmdcndb::selection {id type} {
 
 proc ::vmdcndb::style {id type args} {
     set expr [selection $id $type]
-    if {[llength $args] % 2} {error {CNDB: style requires -color NAME and/or -radius ANGSTROM}}
+    if {[llength $args] % 2} {error {CNDB: style requires -color NAME and/or -radius VALUE_IN_TRAJECTORY_UNITS}}
     foreach {key value} $args {
         switch -- $key {
             -color {
                 if {$value ni [colorinfo colors]} {error "CNDB: unknown VMD color '$value'"}
             }
             -radius {
-                if {![string is double -strict $value] || !($value > 0 && $value < Inf)} {error {CNDB: radius must be finite and positive}}
+                _validate_radius $value
             }
             default {error "CNDB: unknown style option $key"}
         }
@@ -101,6 +103,7 @@ proc ::vmdcndb::style {id type args} {
                 if {$rep < 0} {error {CNDB: the type representation was removed in VMD; reload the molecule to restore it}}
                 mol modcolor $rep $id ColorID [colorinfo index $value]
             } else {$sel set radius $value}
+            dict set ::vmdcndb::records $id type_styles $type [string range $key 1 end] $value
         }
     } finally {$sel delete}
     return
@@ -132,13 +135,22 @@ proc ::vmdcndb::gui_load {} {
     set ui(status) {Loading selected frames...}
     update idletasks
     try {
-        set id [load $ui(file) -trajectory $ui(trajectory) -first $ui(first) -last $ui(last) -stride $ui(stride) -labels $ui(labels) -psf $ui(psf) -units $ui(units) -box $ui(box)]
+        set id [load $ui(file) -trajectory $ui(trajectory) -first $ui(first) -last $ui(last) -stride $ui(stride) -labels $ui(labels) -psf $ui(psf) -radius $ui(default_radius) -box $ui(box)]
         set ui(molecule) $id
         set types [dict keys [dict get [info $id] type_aliases]]
         .vmdcndb.types configure -values $types
         set ui(type) [lindex $types 0]
+        gui_type_changed
+        set ui(unit_text) "Lengths: [dict get [info $id] units] (native trajectory values)"
         set ui(status) "Loaded molecule $id: [molinfo $id get numatoms] beads, [molinfo $id get numframes] frames."
     } on error {message opts} {set ui(status) $message;tk_messageBox -icon error -title {CNDB Loader} -message $message}
+}
+
+proc ::vmdcndb::gui_type_changed {} {
+    variable ui
+    set current [dict get [info $ui(molecule)] type_styles $ui(type)]
+    set ui(radius) [dict get $current radius]
+    set ui(color) [dict get $current color]
 }
 
 proc ::vmdcndb::gui_style {} {
@@ -173,22 +185,26 @@ proc ::vmdcndb::gui {} {
     grid .vmdcndb.trajectory -row $row -column 1 -sticky ew
     grid .vmdcndb.inspect -row $row -column 2 -padx 8
     incr row
-    foreach {key title} {first {First position (0-based)} last {Last position (-1: final)} stride Stride units {Input units (auto/nm/angstrom)} box {Box vectors (optional, 9 values)}} {
+    foreach {key title} {first {First position (0-based)} last {Last position (-1: final)} stride Stride default_radius {Default bead radius (trajectory units)} box {Box vectors (optional, 9 values)}} {
         ttk::label .vmdcndb.l$key -text $title
         ttk::entry .vmdcndb.e$key -textvariable ::vmdcndb::ui($key)
         grid .vmdcndb.l$key -row $row -column 0 -sticky w -padx 8 -pady 4
         grid .vmdcndb.e$key -row $row -column 1 -columnspan 2 -sticky ew -padx 8
         incr row
     }
+    ttk::label .vmdcndb.units -textvariable ::vmdcndb::ui(unit_text)
+    grid .vmdcndb.units -row $row -column 0 -columnspan 3 -sticky w -padx 8 -pady 4
+    incr row
     ttk::button .vmdcndb.load -text {Load as new molecule} -command ::vmdcndb::gui_load
     grid .vmdcndb.load -row $row -column 0 -columnspan 3 -pady 8
     incr row
     ttk::label .vmdcndb.ltypes -text {Type style}
     ttk::combobox .vmdcndb.types -textvariable ::vmdcndb::ui(type) -state readonly
+    bind .vmdcndb.types <<ComboboxSelected>> ::vmdcndb::gui_type_changed
     grid .vmdcndb.ltypes -row $row -column 0 -sticky w -padx 8
     grid .vmdcndb.types -row $row -column 1 -columnspan 2 -sticky ew -padx 8
     incr row
-    ttk::label .vmdcndb.lcolor -text {Color / radius (Å)}
+    ttk::label .vmdcndb.lcolor -text {Color / radius (trajectory units)}
     ttk::combobox .vmdcndb.color -textvariable ::vmdcndb::ui(color) -values [colorinfo colors] -state readonly
     ttk::entry .vmdcndb.radius -textvariable ::vmdcndb::ui(radius) -width 8
     grid .vmdcndb.lcolor -row $row -column 0 -sticky w -padx 8 -pady 4
@@ -203,5 +219,5 @@ proc ::vmdcndb::gui {} {
     grid columnconfigure .vmdcndb 1 -weight 1
     return .vmdcndb
 }
-package provide vmdcndb 0.1.0
+package provide vmdcndb 0.2.0
 vmd_install_extension vmdcndb ::vmdcndb::gui {CNDB Loader}
